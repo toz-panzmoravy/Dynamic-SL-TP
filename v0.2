@@ -1,0 +1,266 @@
+//@version=6
+indicator("Smart TP/SL Zones", shorttitle="SmartZones", overlay=true)
+
+// ============================================================================
+// INPUT PARAMETRY
+// ============================================================================
+
+// Vzhled
+show_labels = input.bool(true, "Zobrazit popisky", group="Vzhled")
+show_zones = input.bool(true, "Zobrazit zóny", group="Vzhled")
+label_offset = input.int(5, "Offset popisků", minval=1, maxval=50, group="Vzhled")
+
+// TP/SL parametry
+sl_atr_multiplier = input.float(2.0, "SL ATR násobek", minval=0.5, maxval=5.0, step=0.1, group="TP/SL")
+tp1_rr_ratio = input.float(1.5, "TP1 R/R ratio", minval=1.0, maxval=3.0, step=0.1, group="TP/SL")
+tp2_rr_ratio = input.float(2.5, "TP2 R/R ratio", minval=1.5, maxval=5.0, step=0.1, group="TP/SL")
+tp3_rr_ratio = input.float(4.0, "TP3 R/R ratio", minval=2.0, maxval=10.0, step=0.1, group="TP/SL")
+
+// Trend detekce
+trend_sensitivity = input.float(0.6, "Citlivost trendu", minval=0.1, maxval=1.0, step=0.1, group="Trend")
+
+// ============================================================================
+// ZÁKLADNÍ VÝPOČTY
+// ============================================================================
+
+// ATR pro volatilitu
+atr_val = ta.atr(14)
+
+// EMA pro trend
+ema_fast = ta.ema(close, 9)
+ema_slow = ta.ema(close, 21)
+
+// RSI
+rsi_val = ta.rsi(close, 14)
+
+// Volume
+volume_avg = ta.sma(volume, 20)
+volume_high = volume > volume_avg * 1.5
+
+// ============================================================================
+// TREND DETEKCE (zjednodušená)
+// ============================================================================
+
+// BUY/SELL podmínky
+buy_conditions = (ema_fast > ema_slow ? 1 : 0) + 
+                 (rsi_val > 50 and rsi_val < 70 ? 1 : 0) + 
+                 (close > close[1] ? 1 : 0) + 
+                 (volume_high ? 1 : 0)
+
+sell_conditions = (ema_fast < ema_slow ? 1 : 0) + 
+                  (rsi_val < 50 and rsi_val > 30 ? 1 : 0) + 
+                  (close < close[1] ? 1 : 0) + 
+                  (volume_high ? 1 : 0)
+
+// Trend síla
+max_conditions = 4
+buy_strength = buy_conditions / max_conditions
+sell_strength = sell_conditions / max_conditions
+
+// Trend určení
+dominant_trend = buy_strength > sell_strength and buy_strength >= trend_sensitivity ? "BUY" :
+                 sell_strength > buy_strength and sell_strength >= trend_sensitivity ? "SELL" : "NEUTRAL"
+
+// ============================================================================
+// DYNAMICKÉ TP/SL VÝPOČTY
+// ============================================================================
+
+// Základní SL vzdálenost
+base_sl_distance = atr_val * sl_atr_multiplier
+
+// BUY úrovně
+sl_buy = close - base_sl_distance
+tp1_buy = close + (base_sl_distance * tp1_rr_ratio)
+tp2_buy = close + (base_sl_distance * tp2_rr_ratio)
+tp3_buy = close + (base_sl_distance * tp3_rr_ratio)
+
+// SELL úrovně
+sl_sell = close + base_sl_distance
+tp1_sell = close - (base_sl_distance * tp1_rr_ratio)
+tp2_sell = close - (base_sl_distance * tp2_rr_ratio)
+tp3_sell = close - (base_sl_distance * tp3_rr_ratio)
+
+// ============================================================================
+// VIZUALIZACE NA GRAFU
+// ============================================================================
+
+// Určení aktivních úrovní
+show_buy = dominant_trend == "BUY"
+show_sell = dominant_trend == "SELL"
+
+// Barvy pro úrovně - přidáme nové barvy pro neutrální stav
+var color TP3_COLOR = #00FFFF  // aqua
+var color TP2_COLOR = #00FF00  // lime
+var color TP1_COLOR = #008000  // green
+var color SL_COLOR = #FF0000   // červená
+var color NEUTRAL_COLOR = color.rgb(128, 128, 128, 50)  // šedá s průhledností
+
+// Určení neutrálního stavu
+is_neutral = math.abs(buy_strength - sell_strength) < 0.2  // pokud je rozdíl malý, považujeme za neutrální
+
+// Vykreslení BUY úrovní s podmíněným barvením
+plot(show_buy ? tp3_buy : na, title="TP3 BUY", 
+     color=is_neutral ? NEUTRAL_COLOR : color.new(TP3_COLOR, 0), 
+     linewidth=2, 
+     style=plot.style_line)
+plot(show_buy ? tp2_buy : na, title="TP2 BUY", 
+     color=is_neutral ? NEUTRAL_COLOR : color.new(TP2_COLOR, 0), 
+     linewidth=2, 
+     style=plot.style_line)
+plot(show_buy ? tp1_buy : na, title="TP1 BUY", 
+     color=is_neutral ? NEUTRAL_COLOR : color.new(TP1_COLOR, 0), 
+     linewidth=2, 
+     style=plot.style_line)
+plot(show_buy ? sl_buy : na, title="SL BUY", 
+     color=is_neutral ? NEUTRAL_COLOR : color.new(SL_COLOR, 0), 
+     linewidth=2, 
+     style=plot.style_line)
+
+// Vykreslení SELL úrovní s podmíněným barvením
+plot(show_sell ? tp3_sell : na, title="TP3 SELL", 
+     color=is_neutral ? NEUTRAL_COLOR : color.new(TP3_COLOR, 0), 
+     linewidth=2, 
+     style=plot.style_line)
+plot(show_sell ? tp2_sell : na, title="TP2 SELL", 
+     color=is_neutral ? NEUTRAL_COLOR : color.new(TP2_COLOR, 0), 
+     linewidth=2, 
+     style=plot.style_line)
+plot(show_sell ? tp1_sell : na, title="TP1 SELL", 
+     color=is_neutral ? NEUTRAL_COLOR : color.new(TP1_COLOR, 0), 
+     linewidth=2, 
+     style=plot.style_line)
+plot(show_sell ? sl_sell : na, title="SL SELL", 
+     color=is_neutral ? NEUTRAL_COLOR : color.new(SL_COLOR, 0), 
+     linewidth=2, 
+     style=plot.style_line)
+
+// Pro SL linie přidáme ještě pomocné rozlišovací čáry
+plot(show_buy ? sl_buy : na, title="SL BUY Marker", 
+     color=is_neutral ? NEUTRAL_COLOR : color.new(SL_COLOR, 0), 
+     linewidth=3, 
+     style=plot.style_circles,  // tečkovaný styl pro BUY SL
+     offset=1)  // mírně posunuté doprava
+
+plot(show_sell ? sl_sell : na, title="SL SELL Marker", 
+     color=is_neutral ? NEUTRAL_COLOR : color.new(SL_COLOR, 0), 
+     linewidth=3, 
+     style=plot.style_cross,  // křížkový styl pro SELL SL
+     offset=-1)  // mírně posunuté doleva
+
+// Pomocné čáry pro lepší viditelnost (tečkované)
+plot(show_buy ? tp3_buy : na, "TP3 BUY Guide", color=color.new(TP3_COLOR, 70), linewidth=1, style=plot.style_circles)
+plot(show_buy ? tp2_buy : na, "TP2 BUY Guide", color=color.new(TP2_COLOR, 70), linewidth=1, style=plot.style_circles)
+plot(show_buy ? tp1_buy : na, "TP1 BUY Guide", color=color.new(TP1_COLOR, 70), linewidth=1, style=plot.style_circles)
+plot(show_buy ? sl_buy : na, "SL BUY Guide", color=color.new(SL_COLOR, 70), linewidth=1, style=plot.style_circles)
+
+plot(show_sell ? tp3_sell : na, "TP3 SELL Guide", color=color.new(TP3_COLOR, 70), linewidth=1, style=plot.style_circles)
+plot(show_sell ? tp2_sell : na, "TP2 SELL Guide", color=color.new(TP2_COLOR, 70), linewidth=1, style=plot.style_circles)
+plot(show_sell ? tp1_sell : na, "TP1 SELL Guide", color=color.new(TP1_COLOR, 70), linewidth=1, style=plot.style_circles)
+plot(show_sell ? sl_sell : na, "SL SELL Guide", color=color.new(SL_COLOR, 70), linewidth=1, style=plot.style_circles)
+
+// ============================================================================
+// POPISKY NA GRAFU
+// ============================================================================
+
+if barstate.islast and show_labels
+    label_style = label.style_label_left
+    label_size = size.normal
+    
+    if show_buy
+        // BUY popisky
+        label.new(bar_index + label_offset, tp3_buy, 
+             text="TP3 (" + str.tostring(math.round(tp3_buy, 2)) + ") +" + str.tostring(tp3_rr_ratio) + "R", 
+             color=color.new(TP3_COLOR, 70),
+             style=label_style,
+             size=label_size)
+             
+        label.new(bar_index + label_offset, tp2_buy, 
+             text="TP2 (" + str.tostring(math.round(tp2_buy, 2)) + ") +" + str.tostring(tp2_rr_ratio) + "R",
+             color=color.new(TP2_COLOR, 70),
+             style=label_style,
+             size=label_size)
+             
+        label.new(bar_index + label_offset, tp1_buy, 
+             text="TP1 (" + str.tostring(math.round(tp1_buy, 2)) + ") +" + str.tostring(tp1_rr_ratio) + "R",
+             color=color.new(TP1_COLOR, 70),
+             style=label_style,
+             size=label_size)
+             
+        label.new(bar_index + label_offset, sl_buy, 
+             text="SL (" + str.tostring(math.round(sl_buy, 2)) + ") -1R",
+             color=color.new(SL_COLOR, 70),
+             style=label_style,
+             size=label_size)
+    
+    if show_sell
+        // SELL popisky
+        label.new(bar_index + label_offset, tp3_sell, 
+             text="TP3 (" + str.tostring(math.round(tp3_sell, 2)) + ") -" + str.tostring(tp3_rr_ratio) + "R",
+             color=color.new(TP3_COLOR, 70),
+             style=label_style,
+             size=label_size)
+             
+        label.new(bar_index + label_offset, tp2_sell, 
+             text="TP2 (" + str.tostring(math.round(tp2_sell, 2)) + ") -" + str.tostring(tp2_rr_ratio) + "R",
+             color=color.new(TP2_COLOR, 70),
+             style=label_style,
+             size=label_size)
+             
+        label.new(bar_index + label_offset, tp1_sell, 
+             text="TP1 (" + str.tostring(math.round(tp1_sell, 2)) + ") -" + str.tostring(tp1_rr_ratio) + "R",
+             color=color.new(TP1_COLOR, 70),
+             style=label_style,
+             size=label_size)
+             
+        label.new(bar_index + label_offset, sl_sell, 
+             text="SL (" + str.tostring(math.round(sl_sell, 2)) + ") +1R",
+             color=color.new(SL_COLOR, 70),
+             style=label_style,
+             size=label_size)
+
+// ============================================================================
+// INFORMAČNÍ TABULKA
+// ============================================================================
+
+if barstate.islast
+    var table info = table.new(position.bottom_right, 2, 5, bgcolor=color.rgb(0, 0, 0, 80))
+    
+    // Trend info
+    trend_text = dominant_trend == "BUY" ? "LONG ▲" : dominant_trend == "SELL" ? "SHORT ▼" : "NEUTRAL ◆"
+    trend_color = dominant_trend == "BUY" ? color.green : dominant_trend == "SELL" ? color.red : color.gray
+    
+    table.cell(info, 0, 0, "TREND", bgcolor=color.new(color.black, 80), text_color=color.white)
+    table.cell(info, 1, 0, trend_text, bgcolor=color.new(trend_color, 80), text_color=trend_color)
+    
+    // Risk info
+    risk_amount = base_sl_distance
+    risk_percent = math.round(risk_amount/close*100, 2)
+    
+    table.cell(info, 0, 1, "RISK", bgcolor=color.new(color.black, 80), text_color=color.white)
+    table.cell(info, 1, 1, str.tostring(risk_percent) + "%", bgcolor=color.new(color.orange, 80), text_color=color.orange)
+    
+    // Reward info
+    reward_text = ""
+    if dominant_trend != "NEUTRAL"
+        tp1_percent = math.round(math.abs(tp1_buy - close)/close*100, 2)
+        tp2_percent = math.round(math.abs(tp2_buy - close)/close*100, 2)
+        tp3_percent = math.round(math.abs(tp3_buy - close)/close*100, 2)
+        reward_text := "TP1: " + str.tostring(tp1_percent) + "%\nTP2: " + str.tostring(tp2_percent) + "%\nTP3: " + str.tostring(tp3_percent) + "%"
+    else
+        reward_text := "−"
+    
+    table.cell(info, 0, 2, "REWARD", bgcolor=color.new(color.black, 80), text_color=color.white)
+    table.cell(info, 1, 2, reward_text, bgcolor=color.new(color.green, 80), text_color=color.green)
+    
+    // Síla trendu
+    strength = math.round(math.max(buy_strength, sell_strength) * 100)
+    strength_text = str.tostring(strength) + "%"
+    strength_color = strength >= 75 ? color.green : strength >= 50 ? color.yellow : color.red
+    
+    table.cell(info, 0, 3, "SÍLA", bgcolor=color.new(color.black, 80), text_color=color.white)
+    table.cell(info, 1, 3, strength_text, bgcolor=color.new(strength_color, 80), text_color=strength_color)
+    
+    // ATR info
+    atr_text = str.tostring(math.round(atr_val, 2))
+    table.cell(info, 0, 4, "ATR", bgcolor=color.new(color.black, 80), text_color=color.white)
+    table.cell(info, 1, 4, atr_text, bgcolor=color.new(color.blue, 80), text_color=color.blue) 
